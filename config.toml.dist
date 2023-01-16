@@ -1,7 +1,0 @@
-[log]
-format = "logfmt"
-level = "info"
-
-[executor]
-cmdPath = "/bin/sleep"
-cmdArgs = "100"

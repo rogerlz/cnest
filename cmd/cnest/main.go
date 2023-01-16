@@ -4,15 +4,16 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"regexp"
 	"syscall"
 
-	"github.com/rogerlz/cnest/pkg/config"
-	"github.com/rogerlz/cnest/pkg/executor"
+	"github.com/rogerlz/cnest/pkg/app"
+	"github.com/rogerlz/cnest/pkg/camera"
 	"github.com/rogerlz/cnest/pkg/logging"
+	"github.com/spf13/pflag"
+	"gopkg.in/ini.v1"
 
 	"github.com/pkg/errors"
-	"github.com/spf13/pflag"
-	"github.com/spf13/viper"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -24,26 +25,71 @@ const (
 )
 
 func main() {
-	v, p := viper.New(), pflag.NewFlagSet(appName, pflag.ExitOnError)
-	config, configFileNotFound := config.Configure(v, p)
-	logger := logging.NewLogger(config.Log)
+	p := pflag.NewFlagSet(appName, pflag.ExitOnError)
 
-	if configFileNotFound {
-		level.Debug(logger).Log("msg", "configuration file not found, using defaults")
+	configFile := p.StringP("config", "c", "", "configuration file")
+
+	_ = p.Parse(os.Args[1:])
+
+	if _, err := os.Stat(*configFile); err != nil {
+		fmt.Printf("config not found: %v\n", err)
+		os.Exit(1)
 	}
+
+	cfg, err := ini.Load(*configFile)
+	if err != nil {
+		fmt.Printf("failed to parse config file: %v\n", err)
+		os.Exit(1)
+	}
+
+	appConfig := new(app.Config)
+	cfg.Section("crowsnest").MapTo(appConfig)
+
+	if err := appConfig.Validate(); err != nil {
+		fmt.Printf("config validation: %v\n", err)
+		os.Exit(1)
+	}
+
+	logger := logging.NewLogger(appConfig.LogLevel)
 
 	level.Info(logger).Log("msg", "starting application")
 
+	sections := cfg.SectionStrings()
+
 	var g run.Group
 
-	// Start the executor module
-	executor := executor.New(logger, config.Executor)
-	{
-		g.Add(func() error {
-			return executor.RunCmd()
-		}, func(error) {
-			executor.Stop()
-		})
+	// find cameras config
+	camerasFound := []string{}
+	for _, s := range sections {
+		found, _ := regexp.MatchString(`cam\s[0-9]`, s)
+		if found {
+			camerasFound = append(camerasFound, s)
+		}
+	}
+	// TODO log cameras found here
+
+	// Loop cameras found
+	for _, c := range camerasFound {
+
+		// Load and parse camera config
+		cameraConfig := new(camera.Config)
+		cfg.Section(c).MapTo(cameraConfig)
+
+		// Validate camera config
+		if err := cameraConfig.Validate(); err != nil {
+			fmt.Printf("camera config validation: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Start a camera thread
+		newCamera := camera.New(logger, *cameraConfig)
+		{
+			g.Add(func() error {
+				return newCamera.Run()
+			}, func(error) {
+				newCamera.Stop()
+			})
+		}
 	}
 
 	// Listen for termination signals.

@@ -9,5 +9,5 @@ $ cd cnest
 $ cp config.toml.dist config.toml
 
 $ make build
-$ ./build/cnest
+$ ./build/cnest --config crowsnest.conf
 ```
