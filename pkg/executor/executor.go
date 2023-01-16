@@ -3,16 +3,11 @@ package executor
 import (
 	"os"
 	"os/exec"
-	"regexp"
 	"strings"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
-)
-
-const (
-	argsRegex = `[^\s"]+|"([^"]*)"`
 )
 
 type Executor struct {
@@ -23,16 +18,18 @@ type Executor struct {
 	cmd    *exec.Cmd
 }
 
-func New(l log.Logger, path, args string) *Executor {
-	// TODO validate if path exists here
+func New(l log.Logger, cmdPath string, cmdArgs []string) *Executor {
 
-	r := regexp.MustCompile(argsRegex)
-	parsedArgs := r.FindAllString(args, -1)
-	cmd := exec.Command(path, parsedArgs[0:]...)
+	if _, err := os.Stat(cmdPath); err != nil {
+		level.Error(l).Log("msg", "command to execute not found", "path", cmdPath, "args", strings.Join(cmdArgs, " "))
+		os.Exit(1)
+	}
+
+	cmd := exec.Command(cmdPath, cmdArgs...)
 
 	return &Executor{
-		CmdPath: path,
-		CmdArgs: parsedArgs,
+		CmdPath: cmdPath,
+		CmdArgs: cmdArgs,
 		logger:  l,
 		cmd:     cmd,
 	}

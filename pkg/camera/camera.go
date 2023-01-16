@@ -12,9 +12,22 @@ type Camera struct {
 }
 
 func New(l log.Logger, c Config) *Camera {
+
+	var (
+		cmdPath string
+		cmdArgs []string
+	)
+
+	switch c.Mode {
+	case "mjpg":
+		cmdPath, cmdArgs = GetMjpgArguments(c)
+	case "rtsp":
+		cmdPath, cmdArgs = GetRtspArguments(c)
+	}
+
 	return &Camera{
 		Config:   c,
-		Executor: *executor.New(l, "sleep", "10"),
+		Executor: *executor.New(l, cmdPath, cmdArgs),
 	}
 }
 
@@ -25,3 +38,14 @@ func (c *Camera) Run() error {
 func (c *Camera) Stop() {
 	c.Executor.Stop()
 }
+
+/*
+
+const (
+	argsRegex = `[^\s"]+|"([^"]*)"`
+)
+
+r := regexp.MustCompile(argsRegex)
+parsedArgs := r.FindAllString(args, -1)
+
+*/
